@@ -1,12 +1,35 @@
 package ro.pub.cs.systems.eim.lab07.xkcdcartoondisplayer.network;
 
+import android.graphics.Bitmap;
 import android.os.AsyncTask;
+import android.provider.DocumentsContract;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.TextView;
+import android.widget.Toast;
 
+import com.android.volley.Response;
+import com.android.volley.VolleyError;
+import com.android.volley.toolbox.ImageRequest;
+
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
+
+import java.io.IOException;
+
+import cz.msebera.android.httpclient.client.HttpClient;
+import cz.msebera.android.httpclient.client.ResponseHandler;
+import cz.msebera.android.httpclient.client.methods.HttpGet;
+import cz.msebera.android.httpclient.impl.client.BasicResponseHandler;
+import cz.msebera.android.httpclient.impl.client.DefaultHttpClient;
+import ro.pub.cs.systems.eim.lab07.xkcdcartoondisplayer.R;
 import ro.pub.cs.systems.eim.lab07.xkcdcartoondisplayer.entities.XKCDCartoonInformation;
+import ro.pub.cs.systems.eim.lab07.xkcdcartoondisplayer.general.Constants;
+
+import static com.android.volley.VolleyLog.TAG;
 
 public class XKCDCartoonDisplayerAsyncTask extends AsyncTask<String, Void, XKCDCartoonInformation> {
 
@@ -49,6 +72,19 @@ public class XKCDCartoonDisplayerAsyncTask extends AsyncTask<String, Void, XKCDC
         // - create an instance of a ResponseHandler object
         // - execute the request, thus obtaining the web page source code
 
+
+        HttpClient httpClient = new DefaultHttpClient();
+        HttpGet httpGet = new HttpGet(urls[0]);
+        ResponseHandler<String> responseHandler = new BasicResponseHandler();
+
+        String sourceCode = null;
+
+        try {
+            sourceCode = httpClient.execute(httpGet, responseHandler);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
         // 2. parse the web page source code
         // - cartoon title: get the tag whose id equals "ctitle"
         // - cartoon url
@@ -72,6 +108,23 @@ public class XKCDCartoonDisplayerAsyncTask extends AsyncTask<String, Void, XKCDC
         //   * prepend the value with the base url: http://www.xkcd.com
         //   * attach the next button a click listener with the address attached
 
+        if (sourceCode != null){
+            Document document = Jsoup.parse(sourceCode);
+            Element html = document.child(0);
+            Log.i(TAG, "doInBackground: " + html);
+
+            // cartoon title
+            Element divTagCtitle = html.getElementsByAttributeValue(Constants.ID_ATTRIBUTE, Constants.CTITLE_VALUE).first();
+            xkcdCartoonInformation.setCartoonTitle(divTagCtitle.ownText());
+
+            //cartoon url
+            Element divTagCartoonUrl = html.getElementsByAttributeValue(Constants.ID_ATTRIBUTE, Constants.COMIC_VALUE).first();
+            String cartoonInternetAddress = divTagCartoonUrl.getElementsByTag(Constants.IMG_TAG).attr(Constants.SRC_ATTRIBUTE);
+            String cartoonUrl = Constants.HTTP_PROTOCOL + cartoonInternetAddress;
+            xkcdCartoonInformation.setCartoonUrl(cartoonUrl);
+        }
+
+
         return  xkcdCartoonInformation;
     }
 
@@ -87,6 +140,36 @@ public class XKCDCartoonDisplayerAsyncTask extends AsyncTask<String, Void, XKCDC
         // and put it into xkcdCartoonImageView
         // previousCartoonUrl, nextCartoonUrl -> set the XKCDCartoonUrlButtonClickListener for previousButton, nextButton
 
+        xkcdCartoonTitleTextView.setText(xkcdCartoonInformation.getCartoonTitle());
+//        xkcdCartoonUrlTextView.setText(xkcdCartoonInformation.getCartoonUrl());
+
+        String cartoonUrl = xkcdCartoonInformation.getCartoonUrl();
+        if (cartoonUrl != null) {
+            xkcdCartoonUrlTextView.setText(cartoonUrl);
+                ImageRequest cartoonRequest = new ImageRequest(
+                        cartoonUrl,
+                        new Response.Listener<Bitmap>() {
+                            @Override
+                            public void onResponse(Bitmap bitmap) {
+                                xkcdCartoonImageView.setImageBitmap(bitmap);
+                            }
+                        },
+                        0,
+                        0,
+                        null,
+                        Bitmap.Config.RGB_565,
+                        new Response.ErrorListener() {
+                            @Override
+                            public void onErrorResponse(VolleyError volleyError) {
+                                Log.d(Constants.TAG, volleyError.toString());
+                                if (Constants.DEBUG) {
+                                    Toast.makeText(xkcdCartoonTitleTextView.getContext(), xkcdCartoonTitleTextView.getResources().getString(R.string.an_error_has_occurred), Toast.LENGTH_LONG).show();
+                                }
+                            }
+                        }
+                );
+                VolleyController.getInstance(xkcdCartoonTitleTextView.getContext()).addToRequestQueue(cartoonRequest);
+        }
     }
 
 }
